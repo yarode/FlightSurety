@@ -12,6 +12,10 @@ contract FlightSuretyData {
 
     address private contractOwner;                                      // Account used to deploy contract
     bool private operational = true;                                    // Blocks all state changes throughout the contract if false
+    mapping(address => bool) private isAirline;
+    mapping(address => uint256) private balances;
+    mapping(bytes32 => address[]) private insurees;
+    mapping(bytes32 => uint256[]) private amountInsured;
 
     /********************************************************************************************/
     /*                                       EVENT DEFINITIONS                                  */
@@ -25,6 +29,7 @@ contract FlightSuretyData {
     constructor()
     {
         contractOwner = msg.sender;
+        airlines.push(msg.sender);
     }
 
     /********************************************************************************************/
@@ -96,12 +101,9 @@ contract FlightSuretyData {
     *      Can only be called from FlightSuretyApp contract
     *
     */
-    function registerAirline
-                            (
-                            )
-                            external
-                            pure
+    function registerAirline(address newAirline) external
     {
+      airlines[newAirline] = true;
     }
 
 
@@ -109,24 +111,26 @@ contract FlightSuretyData {
     * @dev Buy insurance for a flight
     *
     */
-    function buy
-                            (
-                            )
-                            external
-                            payable
+    function buy(string memory flight, uint256 timestamp) external payable
     {
-
+      bytes32 key = hash(flight, timestamp);
+      insurees[key].push(msg.sender);
+      amountInsured[key].push(msg.value);
     }
 
     /**
      *  @dev Credits payouts to insurees
     */
-    function creditInsurees
-                                (
-                                )
-                                external
-                                pure
+    function creditInsurees() external
     {
+      uint256 i;
+      for(i = 0; i < insurees[key].length; i += 1)
+      {
+        address insuree = insurees[key][i];
+        uint256 credit = amountInsured[key][i];
+        amountInsured[key][i] = 0;
+        insuree.transfer(credit);
+      }
     }
 
 
@@ -134,12 +138,12 @@ contract FlightSuretyData {
      *  @dev Transfers eligible payout funds to insuree
      *
     */
-    function pay
-                            (
-                            )
-                            external
-                            pure
+    function pay(address account) external
     {
+      uint256 bal = balances[account];
+      require(msg.value >= bal, "The to withdraw amount exceeds the balance.");
+      balances[account].sub(msg.value);
+      account.transfer(msg.value);
     }
 
    /**
@@ -147,8 +151,9 @@ contract FlightSuretyData {
     *      resulting in insurance payouts, the contract should be self-sustaining
     *
     */
-    function fund() public payable
+    function fund(address account) public payable
     {
+      balances[account].add(msg.value);
     }
 
     function getFlightKey
