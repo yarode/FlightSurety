@@ -32,8 +32,7 @@ contract FlightSuretyData {
     * @dev Constructor
     *      The deploying account becomes contractOwner
     */
-    constructor()
-    {
+    constructor() {
         contractOwner = msg.sender;
         airlines.push(msg.sender);
         isAirline[msg.sender] = true;
@@ -51,8 +50,7 @@ contract FlightSuretyData {
     *      This is used on all state changing functions to pause the contract in
     *      the event there is an issue that needs to be fixed
     */
-    modifier requireIsOperational()
-    {
+    modifier requireIsOperational() {
         require(operational, "Contract is currently not operational");
         _;  // All modifiers require an "_" which indicates where the function body will be added
     }
@@ -60,8 +58,7 @@ contract FlightSuretyData {
     /**
     * @dev Modifier that requires the "ContractOwner" account to be the function caller
     */
-    modifier requireContractOwner()
-    {
+    modifier requireContractOwner() {
         require(msg.sender == contractOwner, "Caller is not contract owner");
         _;
     }
@@ -75,8 +72,7 @@ contract FlightSuretyData {
     *
     * @return A bool that is the current operating status
     */
-    function isOperational() public view returns(bool)
-    {
+    function isOperational() public view returns(bool) {
         return operational;
     }
 
@@ -86,8 +82,7 @@ contract FlightSuretyData {
     *
     * When operational mode is disabled, all write transactions except for this one will fail
     */
-    function setOperatingStatus(bool mode) external requireContractOwner
-    {
+    function setOperatingStatus(bool mode) external requireContractOwner {
         operational = mode;
     }
 
@@ -100,14 +95,13 @@ contract FlightSuretyData {
     *      Can only be called from FlightSuretyApp contract
     *
     */
-    function registerAirline(address newAirline) external requireIsOperational
-    {
-      require(airlines[msg.sender], "only registered airlines can register a new airline");
+    function registerAirline(address newAirline) external requireIsOperational {
+      require(isAirline[msg.sender], "only registered airlines can register a new airline");
       if(airlines.length < 4) {
         airlines.push(newAirline);
         isAirline[newAirline] = true;
         return;
-      } else if(consensusCount >= airlines.length.div(2)) {
+      } else {
         if(!hasCalled[msg.sender]) {
           consensusCount.add(1);
         } else {
@@ -130,8 +124,7 @@ contract FlightSuretyData {
     * @dev Buy insurance for a flight
     *
     */
-    function buy(address airline, string memory flight, uint256 timestamp) external payable requireIsOperational
-    {
+    function buy(address airline, string memory flight, uint256 timestamp) external payable requireIsOperational {
       bytes32 key = getFlightKey(airline, flight, timestamp);
       insureesByFlight[key].push(msg.sender);
       amountInsured[key].push(msg.value);
@@ -140,9 +133,8 @@ contract FlightSuretyData {
     /**
      *  @dev Credits payouts to insurees
     */
-    function creditInsurees() external requireIsOperational
-    {
-      bytes32 key = getFlightKey(address airline, string memory flight, uint256 timestamp);
+    function creditInsurees(address airline, string memory flight, uint256 timestamp) external requireIsOperational {
+      bytes32 key = getFlightKey(airline, flight, timestamp);
       for(uint i = 0; i < insureesByFlight[key].length; i += 1)
       {
         address insuree = insureesByFlight[key][i];
@@ -157,12 +149,11 @@ contract FlightSuretyData {
      *  @dev Transfers eligible payout funds to insuree
      *
     */
-    function pay(address account) external requireIsOperational
-    {
+    function pay(address account) external payable requireIsOperational {
       uint256 bal = balances[account];
       require(msg.value >= bal, "The to withdraw amount exceeds the balance.");
       balances[account].sub(msg.value);
-      account.transfer(msg.value);
+      payable(account).transfer(msg.value);
     }
 
    /**
@@ -170,13 +161,11 @@ contract FlightSuretyData {
     *      resulting in insurance payouts, the contract should be self-sustaining
     *
     */
-    function fund(address account) public payable requireIsOperational
-    {
+    function fund(address account) public payable requireIsOperational {
       balances[account].add(msg.value);
     }
 
-    function getFlightKey(address airline, string memory flight, uint256 timestamp) pure internal returns(bytes32)
-    {
+    function getFlightKey(address airline, string memory flight, uint256 timestamp) pure internal returns(bytes32) {
       return keccak256(abi.encodePacked(airline, flight, timestamp));
     }
 
@@ -184,18 +173,16 @@ contract FlightSuretyData {
     * @dev Fallback function for funding smart contract.
     *
     */
-    fallback() external payable
-    {
-        fund();
+    fallback() external payable {
+        fund(msg.sender);
     }
 
     /**
     * @dev Receive function for funding smart contract
     *
     */
-    receive() external payable
-    {
-        fund();
+    receive() external payable {
+        fund(msg.sender);
     }
 
 }
