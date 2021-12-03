@@ -10,10 +10,9 @@ contract FlightSuretyData {
     /*                                       DATA VARIABLES                                     */
     /********************************************************************************************/
 
-    address private contractOwner;                                      // Account used to deploy contract
-    bool private operational = true;                                    // Blocks all state changes throughout the contract if false
+    address private contractOwner;                         // Account used to deploy contract
+    bool private operational = true;                       // Blocks all state changes throughout the contract if false
 
-    uint256 private count = 0;
     address[] private airlines;
     mapping(address => bool) private isAirline;
 
@@ -38,7 +37,6 @@ contract FlightSuretyData {
         contractOwner = msg.sender;
         airlines.push(msg.sender);
         isAirline[msg.sender] = true;
-        count += 1;
     }
 
     /********************************************************************************************/
@@ -102,21 +100,22 @@ contract FlightSuretyData {
     *      Can only be called from FlightSuretyApp contract
     *
     */
-    function registerAirline(address newAirline) external
+    function registerAirline(address newAirline) external requireIsOperational
     {
-      require(isOperational(), "contract is not operational");
       require(airlines[msg.sender], "only registered airlines can register a new airline");
-      if(count < 4) {
+      if(airlines.length < 4) {
         airlines.push(newAirline);
         isAirline[newAirline] = true;
-      } else if(consensusCount >= count/2 && !hasCalled[msg.sender]) {
-        resetConsensus();
-        airlines.push(newAirline);
-      } else if(consensusCount >= count/2 && hasCalled[msg.sender]) {
-        consensusCount += 1;
         return;
+      } else if(consensusCount >= airlines.length.div(2)) {
+        if(!hasCalled[msg.sender]) {
+          consensusCount.add(1);
+        } else {
+          resetConsensus();
+          airlines.push(newAirline);
+          isAirline[newAirline] = true;
+        }
       }
-      count += 1;
     }
 
     function resetConsensus() internal {
@@ -131,9 +130,8 @@ contract FlightSuretyData {
     * @dev Buy insurance for a flight
     *
     */
-    function buy(address airline, string memory flight, uint256 timestamp) external payable
+    function buy(address airline, string memory flight, uint256 timestamp) external payable requireIsOperational
     {
-      require(isOperational(), "contract is not operational");
       bytes32 key = getFlightKey(airline, flight, timestamp);
       insureesByFlight[key].push(msg.sender);
       amountInsured[key].push(msg.value);
@@ -142,16 +140,15 @@ contract FlightSuretyData {
     /**
      *  @dev Credits payouts to insurees
     */
-    function creditInsurees() external
+    function creditInsurees() external requireIsOperational
     {
-      require(isOperational(), "contract is not operational");
       bytes32 key = getFlightKey(address airline, string memory flight, uint256 timestamp);
       for(uint i = 0; i < insureesByFlight[key].length; i += 1)
       {
         address insuree = insureesByFlight[key][i];
         uint256 credit = amountInsured[key][i];
         amountInsured[key][i] = 0;
-        balances[insuree] += credit;
+        balances[insuree].add(credit);
       }
     }
 
@@ -160,9 +157,8 @@ contract FlightSuretyData {
      *  @dev Transfers eligible payout funds to insuree
      *
     */
-    function pay(address account) external
+    function pay(address account) external requireIsOperational
     {
-      require(isOperational(), "contract is not operational");
       uint256 bal = balances[account];
       require(msg.value >= bal, "The to withdraw amount exceeds the balance.");
       balances[account].sub(msg.value);
@@ -174,9 +170,8 @@ contract FlightSuretyData {
     *      resulting in insurance payouts, the contract should be self-sustaining
     *
     */
-    function fund(address account) public payable
+    function fund(address account) public payable requireIsOperational
     {
-      require(isOperational(), "contract is not operational");
       balances[account].add(msg.value);
     }
 
