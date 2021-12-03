@@ -12,9 +12,16 @@ contract FlightSuretyData {
 
     address private contractOwner;                                      // Account used to deploy contract
     bool private operational = true;                                    // Blocks all state changes throughout the contract if false
+
+    uint256 private count = 0;
+    address[] private airlines;
     mapping(address => bool) private isAirline;
+
+    uint256 private consensusCount = 0;
+    mapping(address => bool) private hasCalled;
+
     mapping(address => uint256) private balances;
-    mapping(bytes32 => address[]) private insurees;
+    mapping(bytes32 => address[]) private insureesByFlight;
     mapping(bytes32 => uint256[]) private amountInsured;
 
     /********************************************************************************************/
@@ -30,6 +37,8 @@ contract FlightSuretyData {
     {
         contractOwner = msg.sender;
         airlines.push(msg.sender);
+        isAirline[msg.sender] = true;
+        count += 1;
     }
 
     /********************************************************************************************/
@@ -68,10 +77,7 @@ contract FlightSuretyData {
     *
     * @return A bool that is the current operating status
     */
-    function isOperational()
-                            public
-                            view
-                            returns(bool)
+    function isOperational() public view returns(bool)
     {
         return operational;
     }
@@ -82,12 +88,7 @@ contract FlightSuretyData {
     *
     * When operational mode is disabled, all write transactions except for this one will fail
     */
-    function setOperatingStatus
-                            (
-                                bool mode
-                            )
-                            external
-                            requireContractOwner
+    function setOperatingStatus(bool mode) external requireContractOwner
     {
         operational = mode;
     }
@@ -103,7 +104,26 @@ contract FlightSuretyData {
     */
     function registerAirline(address newAirline) external
     {
-      airlines[newAirline] = true;
+      require(isOperational(), "contract is not operational");
+      require(airlines[msg.sender], "only registered airlines can register a new airline");
+      if(count < 4) {
+        airlines.push(newAirline);
+        isAirline[newAirline] = true;
+      } else if(consensusCount >= count/2 && !hasCalled[msg.sender]) {
+        resetConsensus();
+        airlines.push(newAirline);
+      } else if(consensusCount >= count/2 && hasCalled[msg.sender]) {
+        consensusCount += 1;
+        return;
+      }
+      count += 1;
+    }
+
+    function resetConsensus() internal {
+      for(uint i = 0; i < airlines.length; i++) {
+        hasCalled[airlines[i]] = false;
+      }
+      consensusCount = 0;
     }
 
 
@@ -111,10 +131,11 @@ contract FlightSuretyData {
     * @dev Buy insurance for a flight
     *
     */
-    function buy(string memory flight, uint256 timestamp) external payable
+    function buy(address airline, string memory flight, uint256 timestamp) external payable
     {
-      bytes32 key = hash(flight, timestamp);
-      insurees[key].push(msg.sender);
+      require(isOperational(), "contract is not operational");
+      bytes32 key = getFlightKey(airline, flight, timestamp);
+      insureesByFlight[key].push(msg.sender);
       amountInsured[key].push(msg.value);
     }
 
@@ -123,13 +144,14 @@ contract FlightSuretyData {
     */
     function creditInsurees() external
     {
-      uint256 i;
-      for(i = 0; i < insurees[key].length; i += 1)
+      require(isOperational(), "contract is not operational");
+      bytes32 key = getFlightKey(address airline, string memory flight, uint256 timestamp);
+      for(uint i = 0; i < insureesByFlight[key].length; i += 1)
       {
-        address insuree = insurees[key][i];
+        address insuree = insureesByFlight[key][i];
         uint256 credit = amountInsured[key][i];
         amountInsured[key][i] = 0;
-        insuree.transfer(credit);
+        balances[insuree] += credit;
       }
     }
 
@@ -140,6 +162,7 @@ contract FlightSuretyData {
     */
     function pay(address account) external
     {
+      require(isOperational(), "contract is not operational");
       uint256 bal = balances[account];
       require(msg.value >= bal, "The to withdraw amount exceeds the balance.");
       balances[account].sub(msg.value);
@@ -153,20 +176,13 @@ contract FlightSuretyData {
     */
     function fund(address account) public payable
     {
+      require(isOperational(), "contract is not operational");
       balances[account].add(msg.value);
     }
 
-    function getFlightKey
-                        (
-                            address airline,
-                            string memory flight,
-                            uint256 timestamp
-                        )
-                        pure
-                        internal
-                        returns(bytes32)
+    function getFlightKey(address airline, string memory flight, uint256 timestamp) pure internal returns(bytes32)
     {
-        return keccak256(abi.encodePacked(airline, flight, timestamp));
+      return keccak256(abi.encodePacked(airline, flight, timestamp));
     }
 
     /**
