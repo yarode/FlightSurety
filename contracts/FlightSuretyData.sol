@@ -119,7 +119,6 @@ contract FlightSuretyData {
       consensusCount = 0;
     }
 
-
    /**
     * @dev Buy insurance for a flight
     *
@@ -143,7 +142,6 @@ contract FlightSuretyData {
         balances[insuree].add(credit);
       }
     }
-
 
     /**
      *  @dev Transfers eligible payout funds to insuree
